@@ -1,3 +1,6 @@
+// This problem can be solved better once btree_cursors are implemented.
+// https://github.com/rust-lang/rust/issues/107540 
+// Having an object point to a gap between two items is just next level and makes the implementation for this problem way easier.
 use std::io;
 use std::collections::BTreeSet;
 
