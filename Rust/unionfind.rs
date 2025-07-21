@@ -1,17 +1,21 @@
 use std::io;
+use std::mem::swap;
 
 #[derive(Debug)]
 struct UnionFind{
-    parent: Vec<usize>
+    parent: Vec<usize>,
+    height: Vec<usize>
 }
 
 impl UnionFind {
     fn new(n: &usize) -> Self {
-        let mut p = Vec::<usize>::new();
+        let mut parent = Vec::<usize>::new();
+        let mut height = Vec::<usize>::new();
         for i in 0..*n {
-            p.push(i);
+            parent.push(i);
+            height.push(1);
         }
-        Self {parent: p}
+        Self {parent, height}
     }
 
     fn get_parent(&mut self, u: usize) -> usize {
@@ -26,12 +30,20 @@ impl UnionFind {
     }
 
     fn merge(&mut self, u: usize, v: usize) {
-        let u = self.get_parent(u);
-        let v = self.get_parent(v);
+        let mut u = self.get_parent(u);
+        let mut v = self.get_parent(v);
 
         if u != v {
-            // no balancing.
+            // balance on height.
+            if self.height[u] > self.height[v] {
+                swap(&mut u, &mut v);
+            }
+
             self.parent[u] = v;
+
+            if self.height[u] == self.height[v] {
+                self.height[v] += 1;
+            }
         }
     }
 }
