@@ -1,5 +1,6 @@
 use std::io::{self, BufRead};
 use std::ops::Range;
+use std::cmp::min;
 
 /// Represents a single node in the segment tree.
 /// Using std::ops::Range makes the [start, end) interval explicit and provides useful methods.
@@ -20,7 +21,7 @@ impl Node {
         }
 
         let mut node = Box::new(Node {
-            value: 0,
+            value: i64::MAX,
             range: range.clone(),
             left: None,
             right: None,
@@ -39,9 +40,9 @@ impl Node {
     /// Recalculates this node's value based on its children's values.
     /// This is called after a child's value has been updated.
     fn update_value(&mut self) {
-        let left_val = self.left.as_ref().map_or(0, |n| n.value);
-        let right_val = self.right.as_ref().map_or(0, |n| n.value);
-        self.value = left_val + right_val;
+        let left_val = self.left.as_ref().map_or(i64::MAX, |n| n.value);
+        let right_val = self.right.as_ref().map_or(i64::MAX, |n| n.value);
+        self.value = min(left_val, right_val);
     }
 }
 
@@ -97,14 +98,14 @@ impl SegmentTree {
     pub fn get(&self, query_range: Range<usize>) -> i64 {
         self.root
             .as_ref()
-            .map_or(0, |root| Self::get_recursive(root, &query_range))
+            .map_or(i64::MAX, |root| Self::get_recursive(root, &query_range))
     }
 
     /// Helper function to recursively calculate the sum over a given query range.
     fn get_recursive(node: &Node, query_range: &Range<usize>) -> i64 {
         // Case 1: The node's range has no overlap with the query range.
         if query_range.end <= node.range.start || query_range.start >= node.range.end {
-            return 0;
+            return i64::MAX;
         }
 
         // Case 2: The node's range is completely contained within the query range.
@@ -116,13 +117,13 @@ impl SegmentTree {
         let left_sum = node
             .left
             .as_ref()
-            .map_or(0, |n| Self::get_recursive(n, query_range));
+            .map_or(i64::MAX, |n| Self::get_recursive(n, query_range));
         let right_sum = node
             .right
             .as_ref()
-            .map_or(0, |n| Self::get_recursive(n, query_range));
+            .map_or(i64::MAX, |n| Self::get_recursive(n, query_range));
 
-        left_sum + right_sum
+        min(left_sum, right_sum)
     }
 }
 
@@ -158,27 +159,9 @@ fn main() {
     for _ in 0..q {
         let query_line = lines.next().unwrap();
         let mut parts = query_line.split_whitespace();
-        let query_type: i32 = parts.next().unwrap().parse().expect("Failed to parse query type");
-        let u: usize = parts.next().unwrap().parse().expect("Failed to parse u");
-        let v: usize = parts.next().unwrap().parse().expect("Failed to parse v");
+        let l: usize = parts.next().unwrap().parse().expect("Failed to parse l");
+        let r: usize = parts.next().unwrap().parse().expect("Failed to parse r");
 
-        match query_type {
-            // Type 0: Add value `v` to the element at index `u`.
-            // Note: The original logic was an "add" operation, which is preserved here.
-            0 => {
-                let p = u;
-                let x = v as i64;
-                // To add, we get the current value first, then set the new value.
-                let current_val = st.get(p..p + 1);
-                st.set(p, current_val + x);
-            }
-            // Type 1: Print the sum of elements in the range `[u, v)`.
-            1 => {
-                let l = u;
-                let r = v;
-                println!("{}", st.get(l..r));
-            }
-            _ => unreachable!("Query type must be 0 or 1"),
-        }
+        println!("{}", st.get(l..r));
     }
 }
