@@ -1,27 +1,26 @@
 use std::io::{self, BufRead};
 use std::ops::Range;
-use std::cmp::min;
 
 /// Represents a single node in the segment tree.
 /// Using std::ops::Range makes the [start, end) interval explicit and provides useful methods.
 #[derive(Debug)]
-struct Node {
-    value: i64,
+struct Node<T: Clone> {
+    value: T,
     range: Range<usize>,
-    left: Option<Box<Node>>,
-    right: Option<Box<Node>>,
+    left: Option<Box<Node<T>>>,
+    right: Option<Box<Node<T>>>,
 }
 
-impl Node {
+impl<T: Clone> Node<T> {
     /// Creates a new node and recursively builds its children to cover the given range.
-    fn new(range: Range<usize>) -> Option<Box<Node>> {
+    fn new(range: Range<usize>, e: &impl Fn() -> T) -> Option<Box<Node<T>>> {
         // An empty range results in no node.
         if range.is_empty() {
             return None;
         }
 
         let mut node = Box::new(Node {
-            value: i64::MAX,
+            value: e(),
             range: range.clone(),
             left: None,
             right: None,
@@ -30,8 +29,8 @@ impl Node {
         // If the range represents more than one element, it's an internal node, so create children.
         if range.len() > 1 {
             let mid = range.start + range.len() / 2;
-            node.left = Node::new(range.start..mid);
-            node.right = Node::new(mid..range.end);
+            node.left = Node::new(range.start..mid, e);
+            node.right = Node::new(mid..range.end, e);
         }
 
         Some(node)
@@ -39,42 +38,56 @@ impl Node {
 
     /// Recalculates this node's value based on its children's values.
     /// This is called after a child's value has been updated.
-    fn update_value(&mut self) {
-        let left_val = self.left.as_ref().map_or(i64::MAX, |n| n.value);
-        let right_val = self.right.as_ref().map_or(i64::MAX, |n| n.value);
-        self.value = min(left_val, right_val);
+    fn update_value(&mut self, e: &impl Fn() -> T, op: &impl Fn(T, T) -> T) {
+        let left_val = self.left.as_ref().map_or(e(), |n| n.value.clone());
+        let right_val = self.right.as_ref().map_or(e(), |n| n.value.clone());
+        self.value = op(left_val, right_val);
     }
 }
 
 /// A segment tree implementation for sum queries on a range.
 #[derive(Debug)]
-pub struct SegmentTree {
-    root: Option<Box<Node>>,
+pub struct SegmentTree<T, E, OP>
+where
+    T: Clone,
+    E: Fn() -> T,
+    OP: Fn(T, T) -> T,
+{
+    root: Option<Box<Node<T>>>,
     size: usize,
+    e: E, // function that returns the identity element
+    op: OP, // function that combines two elements of T and gives the result.
 }
 
-impl SegmentTree {
+impl<T, E, OP> SegmentTree<T, E, OP>
+where
+    T: Clone,
+    E: Fn() -> T + Clone,
+    OP: Fn(T, T) -> T + Clone,
+{
     /// Creates a new SegmentTree for a sequence of `size` elements.
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, e: E, op: OP) -> Self {
         Self {
-            root: Node::new(0..size),
+            root: Node::new(0..size, &e),
             size,
+            e,
+            op,
         }
     }
 
     /// Sets the value at a specific index.
-    pub fn set(&mut self, index: usize, val: i64) {
+    pub fn set(&mut self, index: usize, val: T) {
         // Ensure the index is within the bounds of the tree.
         if index >= self.size {
             return; // Or handle with panic!/Result as needed.
         }
         if let Some(root) = self.root.as_mut() {
-            Self::set_recursive(root, index, val);
+            Self::set_recursive(root, index, val, &self.e, &self.op);
         }
     }
 
     /// Helper function to recursively find the correct leaf node and update values up the tree.
-    fn set_recursive(node: &mut Node, index: usize, val: i64) {
+    fn set_recursive(node: &mut Node<T>, index: usize, val: T, e: &E, op: &OP) {
         // Base case: we have reached the leaf node corresponding to the index.
         if node.range.len() == 1 {
             node.value = val;
@@ -85,45 +98,45 @@ impl SegmentTree {
         let mid = node.range.start + node.range.len() / 2;
         // The `unwrap`s here are safe due to the invariant that non-leaf nodes always have children.
         if index < mid {
-            Self::set_recursive(node.left.as_mut().unwrap(), index, val);
+            Self::set_recursive(node.left.as_mut().unwrap(), index, val, e, op);
         } else {
-            Self::set_recursive(node.right.as_mut().unwrap(), index, val);
+            Self::set_recursive(node.right.as_mut().unwrap(), index, val, e, op);
         }
 
         // After recursion, update the current node's value based on its children.
-        node.update_value();
+        node.update_value(e, op);
     }
 
     /// Returns the sum of values in the given half-open range `[start, end)`.
-    pub fn get(&self, query_range: Range<usize>) -> i64 {
+    pub fn get(&self, query_range: Range<usize>) -> T {
         self.root
             .as_ref()
-            .map_or(i64::MAX, |root| Self::get_recursive(root, &query_range))
+            .map_or((self.e)(), |root| Self::get_recursive(root, &query_range, &self.e, &self.op))
     }
 
     /// Helper function to recursively calculate the sum over a given query range.
-    fn get_recursive(node: &Node, query_range: &Range<usize>) -> i64 {
+    fn get_recursive(node: &Node<T>, query_range: &Range<usize>, e: &E, op: &OP) -> T {
         // Case 1: The node's range has no overlap with the query range.
         if query_range.end <= node.range.start || query_range.start >= node.range.end {
-            return i64::MAX;
+            return e();
         }
 
         // Case 2: The node's range is completely contained within the query range.
         if query_range.start <= node.range.start && query_range.end >= node.range.end {
-            return node.value;
+            return node.value.clone();
         }
 
         // Case 3: Partial overlap. Recurse into children and sum their results.
         let left_sum = node
             .left
             .as_ref()
-            .map_or(i64::MAX, |n| Self::get_recursive(n, query_range));
+            .map_or(e(), |n| Self::get_recursive(n, query_range, e, op));
         let right_sum = node
             .right
             .as_ref()
-            .map_or(i64::MAX, |n| Self::get_recursive(n, query_range));
+            .map_or(e(), |n| Self::get_recursive(n, query_range, e, op));
 
-        min(left_sum, right_sum)
+        op(left_sum, right_sum)
     }
 }
 
@@ -138,10 +151,10 @@ fn main() {
     let n: usize = parts.next().unwrap().parse().expect("Failed to parse n");
     let q: usize = parts.next().unwrap().parse().expect("Failed to parse q");
 
-    let mut st = SegmentTree::new(n);
+    // Example: sum segment tree over i64
+    let mut st = SegmentTree::<i64, _, _>::new(n, || i64::MAX, |a, b| std::cmp::min(a, b));
 
     // Read initial array values and populate the segment tree.
-    // The problem might not provide initial values if n is 0.
     if n > 0 {
         let initial_values: Vec<i64> = lines
             .next()

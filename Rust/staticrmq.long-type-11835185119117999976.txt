@@ -1,0 +1,1 @@
+(dyn Fn(T, T) -> T + 'static)
