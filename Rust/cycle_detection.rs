@@ -94,13 +94,18 @@ fn remove_tail(labels: Vec<usize>, edges: Vec<(usize, usize, usize)>) -> Vec<usi
         right_node_cnt.entry(v.clone()).and_modify(|cnt| *cnt += 1).or_insert(1);
     }
 
+    // dbg!(&edge_map);
+    // dbg!(&right_node_cnt);
+
     let mut index:usize = 0;
-    for i in &labels { 
-        let (_, v) = edge_map[i];
+    for (label_index, i) in labels.clone().into_iter().enumerate() { 
+        let (_, v) = edge_map[&i];
+        // dbg!(&i, &v);
 
         if let Some(cnt) = right_node_cnt.get(&v) { 
+            // dbg!(&i, &v, cnt);
             if *cnt > 1 {
-                index = i+1;
+                index = label_index+1;
                 break;
             }
         }
